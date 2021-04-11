@@ -21,6 +21,7 @@ func marshalToString(d interface{}) string {
 func toTimeout(item map[string]interface{}) Timeout {
 	return Timeout{
 		Type:    PunishmentType(item["type"].(string)),
+		Guild:   item["guild"].(string),
 		User:    item["user"].(string),
 		Issued:  int64(item["issued"].(float64)),
 		Expired: int64(item["expired"].(float64)),
