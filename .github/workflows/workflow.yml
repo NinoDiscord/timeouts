@@ -1,0 +1,32 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login registry.floofy.dev -u august --password-stdin
+      - name: Build
+        run: docker build -t registry.floofy.dev/nino/timeouts:${{github.sha}} .
+      - name: Push
+        run: docker push registry.floofy.dev/nino/timeouts:${{github.sha}}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login
+        run: |
+          mkdir ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+      - name: Set image
+        run: |
+          kubectl set image deployment/nino-prod-timeouts timeouts=registry.floofy.dev/nino/timeouts:${{github.sha}}
+          kubectl set image deployment/nino-edge-timeouts timeouts=registry.floofy.dev/nino/timeouts:${{github.sha}}
+      - name: Rollout status
+        run: |
+          kubectl rollout status deployment/nino-prod-timeouts
+          kubectl rollout status deployment/nino-edge-timeouts
