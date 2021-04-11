@@ -1,7 +1,6 @@
 package pkg
 
 type OPCode int
-type PunishmentType string
 
 const (
 	Ready OPCode = iota
@@ -16,9 +15,11 @@ type WSMessage struct {
 }
 
 type Timeout struct {
-	Type    PunishmentType `json:"type"`
-	Guild   string         `json:"guild"`
-	User    string         `json:"user"`
-	Issued  int64          `json:"issued"`
-	Expired int64          `json:"expired"`
+	Type      string `json:"type"`
+	Guild     string `json:"guild"`
+	User      string `json:"user"`
+	Issued    int64  `json:"issued"`
+	Expired   int64  `json:"expired"`
+	Moderator string `json:"moderator"`
+	Reason    string `json:"reason"`
 }

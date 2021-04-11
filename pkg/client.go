@@ -19,13 +19,18 @@ func marshalToString(d interface{}) string {
 }
 
 func toTimeout(item map[string]interface{}) Timeout {
-	return Timeout{
-		Type:    PunishmentType(item["type"].(string)),
-		Guild:   item["guild"].(string),
-		User:    item["user"].(string),
-		Issued:  int64(item["issued"].(float64)),
-		Expired: int64(item["expired"].(float64)),
+	t := Timeout{
+		Type:      item["type"].(string),
+		Guild:     item["guild"].(string),
+		User:      item["user"].(string),
+		Issued:    int64(item["issued"].(float64)),
+		Expired:   int64(item["expired"].(float64)),
+		Moderator: item["moderator"].(string),
 	}
+	if item["reason"] != nil {
+		t.Reason = item["reason"].(string)
+	}
+	return t
 }
 
 func mapAll(toMap interface{}) []Timeout {
