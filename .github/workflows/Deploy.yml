@@ -11,6 +11,6 @@ jobs:
       - name: Login
         run: echo "${{ secrets.ACCESS_TOKEN }}" | docker login https://docker.pkg.github.com -u auguwu --password-stdin
       - name: Build
-        run: docker build -t docker.pkg.github.com/ninodiscord/timeouts/timeouts:latest
+        run: docker build -t docker.pkg.github.com/ninodiscord/timeouts/timeouts:latest .
       - name: Push
         run: docker push docker.pkg.github.com/ninodiscord/timeouts/timeouts:latest
