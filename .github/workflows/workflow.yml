@@ -1,4 +1,6 @@
-name: Deploy
+# Deploys in Production
+
+name: Deploy (Production)
 on:
   push:
     branches:
