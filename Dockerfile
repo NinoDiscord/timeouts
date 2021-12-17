@@ -1,7 +1,7 @@
 FROM golang:1.17-alpine AS builder
 
-RUN apk add make
-WORKDIR /build
+RUN apk add make jq git
+WORKDIR /
 COPY . .
 RUN go get
 RUN make build

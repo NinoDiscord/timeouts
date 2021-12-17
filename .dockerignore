@@ -1,0 +1,6 @@
+.github
+build
+
+.env
+LICENSE
+renovate.json
