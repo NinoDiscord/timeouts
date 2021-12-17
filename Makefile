@@ -32,6 +32,6 @@ clean:
 	rm -rf build
 	@echo Done!
 
-# Usage: `make clean`
-clean:
-	go clean
+# Usage: `make fmt`
+fmt:
+	go fmt
