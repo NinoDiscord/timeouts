@@ -1,25 +1,30 @@
 package pkg
 
-type OPCode int
+type OperationType int
 
 const (
-	Ready OPCode = iota
+	Ready OperationType = iota
 	Apply
 	Request
-	Acknowledged
+	RequestAll
+	RequestAllBack
 )
 
-type WSMessage struct {
-	Op OPCode      `json:"op"`
-	D  interface{} `json:"d"`
+type Message struct {
+	OP   OperationType `json:"op"`
+	Data interface{}   `json:"d"`
 }
 
 type Timeout struct {
-	Type      string `json:"type"`
-	Guild     string `json:"guild"`
-	User      string `json:"user"`
-	Issued    int64  `json:"issued"`
-	Expired   int64  `json:"expired"`
-	Moderator string `json:"moderator"`
-	Reason    string `json:"reason"`
+	Type        string `json:"type"`
+	GuildId     string `json:"guild_id"`
+	UserId      string `json:"user_id"`
+	IssuedAt    int64  `json:"issued_at"`
+	ExpiresAt   int64  `json:"expires_at"`
+	ModeratorId string `json:"moderator_id"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+type ErrorResponse struct {
+	Message string `json:"message"`
 }

@@ -1,96 +1,135 @@
+// Copyright (c) 2021 Nino
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 package pkg
 
 import (
+	"context"
+	"encoding/json"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"net/http"
+	"os"
 	"sync"
 )
 
-type WSServer struct {
-	client     *Client
-	queue      []Timeout
-	queueMutex *sync.Mutex
-	upgrader   websocket.Upgrader
+type WebSocketServer struct {
+	upgrader websocket.Upgrader
+	mutex    *sync.Mutex
+	Queue    []Timeout
+	client   *Client
 }
 
-func (s *WSServer) HasClient() bool {
-	return s.client != nil
+func (s *WebSocketServer) HasClient() bool {
+	return s.client == nil
 }
 
-func (s *WSServer) Queue(t Timeout) {
-	s.queueMutex.Lock()
-	s.queue = append(s.queue, t)
-	s.queueMutex.Unlock()
+func (s *WebSocketServer) QueueIn(t Timeout) {
+	s.mutex.Lock()
+	s.Queue = append(s.Queue, t)
+	s.mutex.Unlock()
 }
 
 var (
-	Server *WSServer
-	header = http.CanonicalHeaderKey("Authorization")
+	Server     *WebSocketServer
+	authHeader = http.CanonicalHeaderKey("Authorization")
 )
 
 func NewServer() {
 	if Server != nil {
 		panic("Attempt to initialise another server instance!")
 	}
-	Server = &WSServer{
-		client:     nil,
-		queue:      []Timeout{},
-		queueMutex: &sync.Mutex{},
-		upgrader:   websocket.Upgrader{},
+
+	Server = &WebSocketServer{
+		upgrader: websocket.Upgrader{},
+		Queue:    []Timeout{},
+		mutex:    &sync.Mutex{},
+		client:   nil,
 	}
+
+	// Overwrite queue based off Redis
+	data, err := Redis.Connection.Get(context.TODO(), "nino:timeouts").Result()
+	if err != nil {
+		logrus.Warnf("Unable to retrieve all timeouts, are we connected?\n%v", err)
+		return
+	}
+
+	// serialize output to []Timeout{}
+	mappedData := make([]Timeout, 0)
+	err = json.Unmarshal([]byte(data), &mappedData)
+	if err != nil {
+		panic(err)
+	}
+
+	Server.Queue = mappedData
 }
 
-func handleRequest(w http.ResponseWriter, req *http.Request) {
-	con, err := Server.upgrader.Upgrade(w, req, nil)
+func HandleRequest(w http.ResponseWriter, req *http.Request) {
+	conn, err := Server.upgrader.Upgrade(w, req, nil)
 	if err != nil {
-		logrus.Errorf("Socket upgrade error: %v", err)
+		logrus.Errorf("Unable to upgrade WebSocket: %v", err)
 		return
 	}
-	if req.Header.Get(header) == "" || req.Header.Get(header) != GetAuth() {
-		logrus.Warnf("Got bad auth %s from client!", req.Header.Get(header))
-		_ = con.Close()
+
+	if req.Header.Get(authHeader) == "" || req.Header.Get(authHeader) != os.Getenv("AUTH") {
+		logrus.Warnf("Tried to connect client, but received bad authentication key (header=%s)", req.Header.Get(authHeader))
+		_ = conn.Close()
 		return
 	}
+
 	Server.client = &Client{
-		Conn:      con,
+		Conn:      conn,
 		writeLock: &sync.Mutex{},
 	}
-	Server.client.WriteMessage(WSMessage{Op: Ready})
+
+	Server.client.WriteMessage(Message{OP: Ready})
 	go func() {
 		for {
 			if Server.client == nil {
 				break
 			}
-			var msg WSMessage
-			err := con.ReadJSON(&msg)
+
+			var message Message
+			err := conn.ReadJSON(&message)
 			if err != nil {
 				Server.client = nil
 				if websocket.IsCloseError(err, websocket.CloseAbnormalClosure, websocket.CloseGoingAway, websocket.CloseInternalServerErr) {
-					logrus.Info("Bot disconnected from server, when it reconnects we'll play back lost events...")
+					logrus.Info("Received disconnect from bot, will replay events once it is back...")
 					break
 				}
 			}
-			if len(Server.queue) > 0 {
-				// Replay any lost events
-				for _, event := range Server.queue {
-					Server.client.WriteMessage(WSMessage{
-						Op: Apply,
-						D:  event,
+
+			if len(Server.Queue) > 0 {
+				// Replay lost events
+				for _, event := range Server.Queue {
+					Server.client.WriteMessage(Message{
+						OP:   Apply,
+						Data: event,
 					})
 				}
-				// Drop old queue since we replayed the events we needed to
-				Server.queue = []Timeout{}
+
+				// Drop old queue
+				Server.Queue = []Timeout{}
 			}
-			go Server.client.HandleMessage(msg)
+
+			go Server.client.HandleMessage(message)
 		}
 	}()
-}
-
-func StartServer() {
-	http.HandleFunc("/", handleRequest)
-	logrus.Info("Listening on port 4025!")
-	if err := http.ListenAndServe("0.0.0.0:4025", nil); err != nil {
-		logrus.Fatal(err)
-	}
 }

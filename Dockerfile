@@ -1,10 +1,10 @@
 FROM golang:1.17-alpine AS builder
-WORKDIR /
+WORKDIR /build
 COPY . .
 RUN go get
-RUN go build
+RUN make build
 
 FROM alpine:latest
-WORKDIR /
-COPY --from=builder /timeouts /app/timeouts
-CMD ["/app/timeouts"]
+WORKDIR /app/nino/timeouts
+COPY --from=builder /build/timeouts /app/nino/timeouts/timeouts
+CMD ["/app/nino/timeouts/timeouts"]

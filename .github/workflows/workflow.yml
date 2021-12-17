@@ -1,34 +1,85 @@
-# Deploys in Production
-
-name: Deploy (Production)
+name: Lint
 on:
   push:
     branches:
+      - 'feature/**'
+      - 'bug/gh-**'
+      - 'issue/gh-**'
       - master
+
+    paths-ignore:
+      - '.github/**'
+      - '.vscode/**'
+      - 'assets/**'
+      - 'docker/**'
+      - '.idea/**'
+      - '.dockerignore'
+      - '.gitignore'
+      - '**.md'
+      - 'LICENSE'
+      - 'renovate.json'
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Login
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login registry.floofy.dev -u august --password-stdin
-      - name: Build
-        run: docker build -t registry.floofy.dev/nino/timeouts:${{github.sha}} .
-      - name: Push
-        run: docker push registry.floofy.dev/nino/timeouts:${{github.sha}}
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Login
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Use Go v1.17
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+
+      - name: Build project (for errors)
+        run: make build
+
+      - name: Format project
+        run: make fmt
+
+      - name: Check if git status is dirty
+        id: git_status
         run: |
-          mkdir ~/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
-      - name: Set image
+          if [ -n "$(git status --porcelain)" ]; then
+              echo '::set-output name=STATUS_DIRTY::true'
+          else
+            echo '::set-output name=STATUS_DIRTY::false'
+          fi
+
+      - name: Commit changes (if dirty)
+        if: contains(steps.git_status.outputs.STATUS_DIRTY, 'true')
         run: |
-          kubectl set image deployment/nino-prod-timeouts nino-prod-timeouts=registry.floofy.dev/nino/timeouts:${{github.sha}}
-          kubectl set image deployment/nino-edge-timeouts nino-edge-timeouts=registry.floofy.dev/nino/timeouts:${{github.sha}}
-      - name: Rollout status
-        run: |
-          kubectl rollout status deployment/nino-prod-timeouts
-          kubectl rollout status deployment/nino-edge-timeouts
+          git config --global user.name "Noel[bot]"
+          git config --global user.email "ohlookitsaugust@gmail.com"
+          
+          git add .
+          git commit -m "fix: format project"
+          git push -u origin master
+
+# Nino v1 is not compatible with v2 of timeouts
+# Also, using my registry will be deprecated and will be replaced with the one being built from Deploy.yml
+#  build:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2
+#      - name: Login
+#        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login registry.floofy.dev -u august --password-stdin
+#      - name: Build
+#        run: docker build -t registry.floofy.dev/nino/timeouts:${{github.sha}} .
+#      - name: Push
+#        run: docker push registry.floofy.dev/nino/timeouts:${{github.sha}}
+#  deploy:
+#    needs: build
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Login
+#        run: |
+#          mkdir ~/.kube
+#          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+#      - name: Set image
+#        run: |
+#          kubectl set image deployment/nino-prod-timeouts nino-prod-timeouts=registry.floofy.dev/nino/timeouts:${{github.sha}}
+#          kubectl set image deployment/nino-edge-timeouts nino-edge-timeouts=registry.floofy.dev/nino/timeouts:${{github.sha}}
+#      - name: Rollout status
+#        run: |
+#          kubectl rollout status deployment/nino-prod-timeouts
+#          kubectl rollout status deployment/nino-edge-timeouts

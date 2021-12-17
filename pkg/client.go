@@ -1,9 +1,11 @@
 package pkg
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,16 +22,18 @@ func marshalToString(d interface{}) string {
 
 func toTimeout(item map[string]interface{}) Timeout {
 	t := Timeout{
-		Type:      item["type"].(string),
-		Guild:     item["guild"].(string),
-		User:      item["user"].(string),
-		Issued:    int64(item["issued"].(float64)),
-		Expired:   int64(item["expired"].(float64)),
-		Moderator: item["moderator"].(string),
+		Type:        item["type"].(string),
+		GuildId:     item["guild_id"].(string),
+		UserId:      item["user_id"].(string),
+		IssuedAt:    int64(item["issued_at"].(float64)),
+		ExpiresAt:   int64(item["expires_at"].(float64)),
+		ModeratorId: item["moderator"].(string),
 	}
+
 	if item["reason"] != nil {
 		t.Reason = item["reason"].(string)
 	}
+
 	return t
 }
 
@@ -40,50 +44,75 @@ func mapAll(toMap interface{}) []Timeout {
 	return timeouts
 }
 
-func (c *Client) WriteMessage(msg WSMessage) {
+func (c *Client) WriteMessage(msg Message) {
 	c.writeLock.Lock()
 	err := c.Conn.WriteJSON(msg)
 	c.writeLock.Unlock()
+
 	if err != nil {
-		logrus.Errorf("Failed to write %s to client!", marshalToString(msg))
+		logrus.Errorf("Unable to write %s to client: %v", marshalToString(msg), err)
 	} else {
-		logrus.Debugf("Wrote %s to client!", marshalToString(msg))
+		logrus.Debugf("Wrote data to client: %s", marshalToString(msg))
 	}
 }
 
 func (c *Client) HandleTimeout(t Timeout) {
-	logrus.Debugf("Received a request to handle timeout: %s", marshalToString(t))
+	logrus.Debugf("Told to handle timeout (type=%s; guild=%s; user=%s)", t.Type, t.GuildId, t.UserId)
 	go func() {
 		select {
-		case <-time.After(time.Duration(t.Expired-t.Issued) * time.Millisecond):
+		case <-time.After(time.Duration(t.ExpiresAt-t.IssuedAt) * time.Millisecond):
 			{
 				if !Server.HasClient() {
-					Server.Queue(t)
-					logrus.Warnf("Client has disconnected, adding a pending timeout to the replay queue.")
+					Server.QueueIn(t)
+					logrus.Warnf("Client has been disconnected, added pending timeout to replay soon.")
 					return
 				}
-				c.WriteMessage(WSMessage{
-					Op: Apply,
-					D:  t,
+
+				c.WriteMessage(Message{
+					OP:   Apply,
+					Data: t,
 				})
 			}
 		}
 	}()
 }
 
-func (c *Client) HandleMessage(msg WSMessage) {
-	switch msg.Op {
+func (c *Client) HandleMessage(msg Message) {
+	switch msg.OP {
+	case RequestAll:
+		{
+			data, err := Redis.Connection.HGetAll(context.TODO(), "nino:timeouts").Result()
+			if err != nil {
+				logrus.Warnf("Unable to retrieve all timeouts, are we connected?\n%v", err)
+				c.WriteMessage(Message{
+					OP:   RequestAllBack,
+					Data: []Timeout{},
+				})
+
+				return
+			}
+
+			// serialize output to map[string]Timeout{}
+			mappedData := map[string]Timeout{}
+			for key, value := range data {
+				timeout := Timeout{}
+				if err := json.NewDecoder(strings.NewReader(value)).Decode(&timeout); err != nil {
+					logrus.Warnf("Unable to decode packet %s, skipping", value)
+					continue
+				}
+
+				mappedData[key] = timeout
+			}
+
+			c.WriteMessage(Message{
+				OP:   RequestAll,
+				Data: mappedData,
+			})
+		}
+
 	case Request:
 		{
-			c.HandleTimeout(toTimeout(msg.D.(map[string]interface{})))
-		}
-	case Acknowledged:
-		{
-			timeouts := mapAll(msg.D)
-			for _, timeout := range timeouts {
-				c.HandleTimeout(timeout)
-			}
-			logrus.Info("Client acknowledged ready!")
+			c.HandleTimeout(toTimeout(msg.Data.(map[string]interface{})))
 		}
 	}
 }
