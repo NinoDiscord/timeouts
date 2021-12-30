@@ -23,6 +23,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"strings"
@@ -78,6 +79,16 @@ func (c *Client) WriteMessage(msg Message) {
 
 func (c *Client) HandleTimeout(t Timeout) {
 	logrus.Debugf("Told to handle timeout (type=%s; guild=%s; user=%s)", t.Type, t.GuildId, t.UserId)
+	key := fmt.Sprintf("%s:%s", t.GuildId, t.UserId)
+	bytes, err := json.Marshal(&t)
+	if err != nil {
+		logrus.Errorf("Unable to marshal timeout %v: %v", t, err)
+	}
+
+	if err = Redis.Connection.HMSet(context.TODO(), "nino:timeouts", key, string(bytes)).Err(); err != nil {
+		logrus.Errorf("Unable to store timeout %v into Redis: %v", t, err)
+	}
+
 	go func() {
 		select {
 		case <-time.After(time.Duration(t.ExpiresAt-t.IssuedAt) * time.Millisecond):
@@ -85,7 +96,18 @@ func (c *Client) HandleTimeout(t Timeout) {
 				if !Server.HasClient() {
 					Server.QueueIn(t)
 					logrus.Warnf("Client has been disconnected, added pending timeout to replay soon.")
+
 					return
+				}
+
+				// pop from redis
+				_, err := Redis.Connection.HGet(context.TODO(), "nino:timeouts", fmt.Sprintf("%s:%s", t.GuildId, t.UserId)).Result()
+				if err != nil {
+					logrus.Warnf("Timeout doesn't exist anymore? %v", err)
+				}
+
+				if err = Redis.Connection.HDel(context.TODO(), "nino:timeouts", fmt.Sprintf("%s:%s", t.GuildId, t.UserId)).Err(); err != nil {
+					logrus.Errorf("Unable to delete timeout from cache: %v", err)
 				}
 
 				c.WriteMessage(Message{
