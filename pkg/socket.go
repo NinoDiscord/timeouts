@@ -23,6 +23,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
+	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"net/http"
@@ -67,8 +68,23 @@ func NewServer() {
 	// Overwrite queue based off Redis
 	data, err := Redis.Connection.Get(context.TODO(), "nino:timeouts").Result()
 	if err != nil {
-		logrus.Warnf("Unable to retrieve all timeouts, are we connected?\n%v", err)
-		return
+		if err == redis.Nil {
+			logrus.Warnf("We have retrieved `null` when fetching for timeouts, skipping as empty queue.")
+
+			// Set it to an empty array
+			err = Redis.Connection.HMSet(context.TODO(), "nino:timeouts", []Timeout{}).Err()
+			if err != nil {
+				logrus.Errorf("Unable to set data as an empty array. :<")
+				return
+			}
+
+			logrus.Infof("Queue has been set in Redis, now starting fresh!")
+			Server.Queue = make([]Timeout, 0)
+			return
+		} else {
+			logrus.Warnf("Unable to retrieve all timeouts, are we connected?\n%v", err)
+			return
+		}
 	}
 
 	// serialize output to []Timeout{}

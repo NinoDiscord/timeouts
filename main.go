@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"net/http"
 	"nino.sh/timeouts/pkg"
@@ -32,12 +33,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-)
-
-var (
-	version    string
-	commitHash string
-	buildDate  string
 )
 
 func init() {
@@ -58,7 +53,7 @@ func init() {
 		}
 	}
 
-	logrus.Infof("Using v%s (commit: %s, built at: %s)", version, commitHash, buildDate)
+	logrus.Infof("Using v%s (commit: %s, built at: %s)", pkg.Version, pkg.CommitHash, pkg.BuildDate)
 }
 
 func fallbackEnv(envString string, fallback string) string {
@@ -77,7 +72,14 @@ func main() {
 	// Create a new `Server` instance
 	pkg.NewServer()
 
+	enableMetrics := pkg.SetupMetrics()
+
 	http.HandleFunc("/", pkg.HandleRequest)
+
+	if enableMetrics {
+		http.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
+	}
+
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%s", fallbackEnv(os.Getenv("PORT"), "4025")),
 		Handler: nil,

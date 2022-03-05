@@ -1,6 +1,6 @@
 VERSION = $(shell cat ./version.json | jq .version | tr -d '"')
 GIT_COMMIT = $(shell git rev-parse --short HEAD)
-BUILD_DATE = $(shell go run ./cmd/builddate.go)
+BUILD_DATE = $(shell go run ./cmd/build-date.go)
 
 HOME_OS ?= $(shell go env GOOS)
 ifeq ($(HOME_OS),linux)
@@ -22,7 +22,7 @@ endif
 # Usage: `make build`
 build:
 	@echo Building project...
-	go build -ldflags "-s -w -X main.version=${VERSION} -X main.commitHash=${GIT_COMMIT} -X \"main.buildDate=${BUILD_DATE}\"" -o $(TARGET_FILE)
+	go build -ldflags "-s -w -X nino.sh/timeouts/pkg.Version=${VERSION} -X nino.sh/timeouts/pkg.CommitHash=${GIT_COMMIT} -X \"nino.sh/timeouts/pkg.BuildDate=${BUILD_DATE}\"" -o $(TARGET_FILE)
 	@echo Built project! Use "$(TARGET_FILE)" to execute the project.
 
 # Usage: `make clean`

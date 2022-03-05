@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -155,6 +156,19 @@ func (c *Client) HandleMessage(msg Message) {
 	case Request:
 		{
 			c.HandleTimeout(toTimeout(msg.Data.(map[string]interface{})))
+		}
+
+	case Stats:
+		{
+			c.WriteMessage(Message{
+				OP: Stats,
+				Data: map[string]interface{}{
+					"go_version": strings.TrimPrefix(runtime.GOOS, "go"),
+					"version":    Version,
+					"commit_sha": CommitHash,
+					"build_date": BuildDate,
+				},
+			})
 		}
 	}
 }

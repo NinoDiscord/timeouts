@@ -20,31 +20,39 @@
 
 package pkg
 
-type OperationType int
-
-const (
-	Ready OperationType = iota
-	Apply
-	Request
-	RequestAll
-	Stats
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
+	"os"
 )
 
-type Message struct {
-	OP   OperationType `json:"op"`
-	Data interface{}   `json:"d"`
-}
+var (
+	TimeoutMetric = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nino_timeouts_timeouts",
+		Help: "How many timeouts the service is handling",
+	})
 
-type Timeout struct {
-	Type        string `json:"type"`
-	GuildId     string `json:"guild_id"`
-	UserId      string `json:"user_id"`
-	IssuedAt    int64  `json:"issued_at"`
-	ExpiresAt   int64  `json:"expires_at"`
-	ModeratorId string `json:"moderator_id"`
-	Reason      string `json:"reason,omitempty"`
-}
+	TimeoutLatencyMetric = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "nino_timeouts_average_ws_latency",
+		Help: "The latency to process a WebSocket message.",
+	})
+)
 
-type ErrorResponse struct {
-	Message string `json:"message"`
+func SetupMetrics() bool {
+	enabled, ok := os.LookupEnv("NINO_TIMEOUTS_METRICS_ENABLED")
+
+	if !ok {
+		logrus.Infof("`NINO_TIMEOUTS_METRICS_ENABLED` was not defined, disabling metrics...")
+		return false
+	}
+
+	if enabled == "false" || enabled == "0" {
+		logrus.Infof("Not enabling metrics due to `NINO_TIMEOUTS_METRICS_ENABLED` being disabled.")
+		return false
+	}
+
+	logrus.Infof("Now setting up collector registry...")
+	prometheus.MustRegister(TimeoutMetric, TimeoutLatencyMetric)
+
+	return true
 }
