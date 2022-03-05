@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 type WebSocketServer struct {
@@ -122,6 +123,7 @@ func HandleRequest(w http.ResponseWriter, req *http.Request) {
 				break
 			}
 
+			s := time.Now()
 			var message Message
 			err := conn.ReadJSON(&message)
 			if err != nil {
@@ -145,7 +147,7 @@ func HandleRequest(w http.ResponseWriter, req *http.Request) {
 				Server.Queue = []Timeout{}
 			}
 
-			go Server.client.HandleMessage(message)
+			go Server.client.HandleMessage(message, s)
 		}
 	}()
 }

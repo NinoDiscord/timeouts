@@ -94,6 +94,10 @@ func (c *Client) HandleTimeout(t Timeout) {
 		select {
 		case <-time.After(time.Duration(t.ExpiresAt-t.IssuedAt) * time.Millisecond):
 			{
+				if MetricsEnabled {
+					TimeoutMetric.Dec()
+				}
+
 				if !Server.HasClient() {
 					Server.QueueIn(t)
 					logrus.Warnf("Client has been disconnected, added pending timeout to replay soon.")
@@ -120,7 +124,7 @@ func (c *Client) HandleTimeout(t Timeout) {
 	}()
 }
 
-func (c *Client) HandleMessage(msg Message) {
+func (c *Client) HandleMessage(msg Message, t time.Time) {
 	switch msg.OP {
 	case RequestAll:
 		{
@@ -155,6 +159,10 @@ func (c *Client) HandleMessage(msg Message) {
 
 	case Request:
 		{
+			if MetricsEnabled {
+				TimeoutMetric.Inc()
+			}
+
 			c.HandleTimeout(toTimeout(msg.Data.(map[string]interface{})))
 		}
 
@@ -170,5 +178,9 @@ func (c *Client) HandleMessage(msg Message) {
 				},
 			})
 		}
+	}
+
+	if MetricsEnabled {
+		TimeoutLatencyMetric.Observe(float64(time.Since(t).Nanoseconds() / 1000000))
 	}
 }

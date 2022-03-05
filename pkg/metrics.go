@@ -27,6 +27,8 @@ import (
 )
 
 var (
+	MetricsEnabled = false
+
 	TimeoutMetric = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "nino_timeouts_timeouts",
 		Help: "How many timeouts the service is handling",
@@ -51,6 +53,7 @@ func SetupMetrics() bool {
 		return false
 	}
 
+	MetricsEnabled = true
 	logrus.Infof("Now setting up collector registry...")
 	prometheus.MustRegister(TimeoutMetric, TimeoutLatencyMetric)
 
